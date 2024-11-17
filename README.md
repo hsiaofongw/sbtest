@@ -11,5 +11,5 @@ ncat --keep-open --listen 12345 --exec '/usr/bin/cat'
 在客户端：
 
 ```
-node ./latency-measure.js
+node ./latency-measure.js <server_host> <server_port> <tick_interval_seconds>
 ```

@@ -1,5 +1,5 @@
 const { Socket } = require("net");
-const { Readable, Transform } = require("stream");
+const { Readable, Transform, Duplex } = require("stream");
 const os = require("os");
 
 class TimerStream extends Readable {
@@ -305,57 +305,41 @@ class NumberFormatter extends Transform {
 }
 
 class LatencyMeasurer {
-  constructor(host, port, intervalSecs) {
-    // Detect system
-    switch (os.endianness()) {
-      case "LE":
-        console.debug("CPU is little endian format");
-        break;
-
-      case "BE":
-        console.debug("CPU is big endian format");
-        break;
-
-      default:
-        colsole.debug("Unknown endianness");
+  constructor(intervalSecs, rwStream) {
+    if (!(rwStream instanceof Duplex)) {
+      throw TypeError("rwStream shall be a Duplex(Readable and Writable)");
     }
+
+    this.rwStream = rwStream;
 
     // Create streams
     this.timerStream = new TimerStream(intervalSecs);
     this.timestampInjector = new TimestampInjector();
     this.packetFomatter = new PacketFormulater();
-    this.socket = new Socket();
     this.packetParser = new PacketParser();
     this.latencyCalculator = new LatencyCalculator();
     this.formatter = new NumberFormatter();
-
-    // Connect and set up pipeline
-    this.socket.connect(port, host, () => {
-      console.debug(`Connected to ${host}:${port}`);
-
-      // Timer -> TimestampInjector -> Socket
-      this.timerStream
-        .pipe(this.timestampInjector)
-        .pipe(this.packetFomatter)
-        .pipe(this.socket)
-        .pipe(this.packetParser)
-        .pipe(this.latencyCalculator)
-        .pipe(this.formatter)
-        .pipe(process.stdout)
-        .on("error", this.handleError);
-    });
-
-    this.socket.on("error", this.handleError);
   }
 
-  handleError(err) {
-    console.error("broken pipe");
+  start() {
+    this.timerStream
+      .pipe(this.timestampInjector)
+      .pipe(this.packetFomatter)
+      .pipe(this.rwStream)
+      .pipe(this.packetParser)
+      .pipe(this.latencyCalculator)
+      .pipe(this.formatter)
+      .pipe(process.stdout)
+      .on("error", this._handleError);
+  }
+
+  _handleError(err) {
+    console.error(err);
     process.exit(1);
   }
 
   stop() {
     this.timerStream.destroy();
-    this.socket.destroy();
   }
 }
 
@@ -379,8 +363,32 @@ if (isNaN(interval) || interval <= 0) {
   process.exit(1);
 }
 
-// Start the latency measurer
-const measurer = new LatencyMeasurer(host, portNum, interval);
+switch (os.endianness()) {
+  case "LE":
+    console.debug("CPU is little endian format");
+    break;
+
+  case "BE":
+    console.debug("CPU is big endian format");
+    break;
+
+  default:
+    colsole.debug("Unknown endianness");
+}
+
+const socket = new Socket();
+
+socket.connect({ host, port }, () => {
+  console.debug(`Connected to ${host}:${port}`);
+
+  const measurer = new LatencyMeasurer(interval, socket);
+  measurer.start();
+});
+
+socket.on("error", () => {
+  console.error("Broken pipe, exitting...");
+  process.exit(1);
+});
 
 // Handle cleanup on exit
 process.on("SIGINT", () => {

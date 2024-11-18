@@ -321,6 +321,37 @@ class PacketParser extends Transform {
   }
 }
 
+class LatencyAnalyzer {
+  constructor(measurePDU) {
+    if (!(measurePDU instanceof MeasurePDU)) {
+      throw TypeError("Expecting a MeasurePDU instance");
+    }
+
+    this.measurePDU = measurePDU;
+    this.sendTrip = undefined;
+    this.backTrip = undefined;
+    this.roundTrip = undefined;
+
+    const cliTx = this.measurePDU?.cliTx;
+    const srvTx = this.measurePDU?.srvTx;
+
+    if (
+      (typeof cliTx === "bigint" || typeof cliTx === "number") &&
+      cliTx !== BigInt(0)
+    ) {
+      const now = BigInt(Date.now());
+      if (
+        (typeof srvTx === "bigint" || typeof srvTx === "number") &&
+        srvTx !== BigInt(0)
+      ) {
+        this.sendTrip = srvTx - cliTx; // 去程
+        this.backTrip = BigInt(now - srvTx); // 返程
+      }
+      this.roundTrip = BigInt(now - cliTx); // 往返
+    }
+  }
+}
+
 class LatencyCalculator extends Transform {
   constructor(opts = {}) {
     super({ ...opts, objectMode: true });
@@ -331,33 +362,50 @@ class LatencyCalculator extends Transform {
       throw TypeError("Expects a MeasurePDU object");
     }
 
-    // Read received timestamp and calculate latency
-    const receivedTime = chunk.cliTx;
-    const now = BigInt(Date.now());
-    const latency = now - receivedTime;
+    const analyzedMeasure = new LatencyAnalyzer(chunk);
+    if (
+      typeof analyzedMeasure.roundTrip !== "bigint" &&
+      typeof analyzedMeasure.roundTrip !== "number"
+    ) {
+      console.error(
+        "Warning, corrupted analyze result:",
+        analyzedMeasure,
+        chunk
+      );
+      callback();
+      return;
+    }
 
-    // Output absolute latency value as 8 bytes
-    const buf = Buffer.allocUnsafe(8);
-    buf.writeBigUInt64BE(latency >= 0n ? latency : -latency);
-    this.push(buf);
+    this.push(analyzedMeasure);
     callback();
   }
 }
 
-class NumberFormatter extends Transform {
+class PrettyPrintFormatter extends Transform {
   constructor(opts = {}) {
-    super(opts);
+    super({ ...opts, objectMode: true });
   }
 
   _transform(chunk, encoding, callback) {
-    if (chunk.length !== 8) {
-      callback(new Error("Invalid number chunk size"));
-      return;
+    if (!(chunk instanceof LatencyAnalyzer)) {
+      throw TypeError("Expecting a LatencyAnalyzer instance");
     }
 
-    // Convert uint64 to readable string with ms unit
-    const value = chunk.readBigUInt64BE();
-    this.push(`${value}ms\n`);
+    let prettyText = `SeqNum: ${chunk.measurePDU.seqNum}, RoundTrip: ${chunk.roundTrip}ms`;
+
+    if (
+      typeof chunk.sendTrip === "number" ||
+      typeof chunk.sendTrip === "bigint"
+    ) {
+      if (
+        typeof chunk.backTrip === "number" ||
+        typeof chunk.backTrip === "bigint"
+      ) {
+        prettyText += `, SendTrip: ${chunk.sendTrip}, BackTrip: ${chunk.backTrip}`;
+      }
+    }
+
+    this.push(`${prettyText}\n`);
     callback();
   }
 }
@@ -376,7 +424,7 @@ class LatencyMeasurer {
     this.packetFomatter = new PacketFormulater();
     this.packetParser = new PacketParser();
     this.latencyCalculator = new LatencyCalculator();
-    this.formatter = new NumberFormatter();
+    this.formatter = new PrettyPrintFormatter();
   }
 
   start() {
@@ -419,19 +467,6 @@ if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
 if (isNaN(interval) || interval <= 0) {
   console.error("Interval must be a positive number");
   process.exit(1);
-}
-
-switch (os.endianness()) {
-  case "LE":
-    console.debug("CPU is little endian format");
-    break;
-
-  case "BE":
-    console.debug("CPU is big endian format");
-    break;
-
-  default:
-    colsole.debug("Unknown endianness");
 }
 
 const socket = new Socket();

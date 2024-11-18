@@ -171,7 +171,7 @@ class MeasurePDU {
       throw TypeError("Expecting Buffer, got:", chunk);
     }
 
-    if (chunk.length !== pktSpec.totalSize) {
+    if (chunk.length < pktSpec.totalSize) {
       throw TypeError(
         `Incorrect buffer size, expecting: ${pktSpec.totalSize}, got:`,
         chunk.length
@@ -191,7 +191,7 @@ class MeasurePDU {
       return;
     }
 
-    this.preamble = Buffer.from(chunk, 0, pktSpec.magicStr.length);
+    this.preamble = Buffer.from(chunk.subarray(0, pktSpec.magicStr.length));
     this.rev = chunk.readBigUint64BE(pktSpec.fields.rev.offset);
     this.cliTx = chunk.readBigUint64BE(pktSpec.fields.cliTx.offset);
     this.srvTx = chunk.readBigUInt64BE(pktSpec.fields.srvTx.offset);
@@ -203,12 +203,48 @@ class MeasurePDU {
   }
 }
 
+/**
+ * Check if given pattern `pattern` is exsisting at buffer `buf`.
+ * if it is, returns the offset (in bytes), otherwise returns `-1`.
+ * @param {Buffer} buf
+ * @param {Buffer} pattern
+ * @returns {number}
+ */
+function checkPattern(buf, pattern) {
+  if (!(buf instanceof Buffer && pattern instanceof Buffer)) {
+    throw TypeError("Expecting Buffer.");
+  }
+
+  if (buf.length < pattern.length) {
+    return -1;
+  }
+
+  if (pattern.length <= 0) {
+    throw "Invalid pattern length, this is undefined behavior.";
+  }
+
+  // Now it's comfortable to check pattern, since buf.length >= pattern.length > 0.
+  // (todo): Rewrites this using KMP algorithm.
+  for (let i = 0; i < buf.length - pattern.length + 1; ++i) {
+    if (buf.compare(pattern, 0, pattern.length, i, i + pattern.length) === 0) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 class PacketParser extends Transform {
   constructor(opts = {}) {
     super({ ...opts, objectMode: true });
 
     this.tempBufSize = 0;
     this.tempBuf = Buffer.alloc(pktSpec.totalSize, 0);
+    this.hasPreamble = false;
+
+    if (this.tempBuf.length < pktSpec.totalSize) {
+      throw "Size of temporary buffer shall not be less than the total size of PDU.";
+    }
   }
 
   _transform(chunk, encoding, callback) {
@@ -216,35 +252,70 @@ class PacketParser extends Transform {
       throw TypeError("Invalid chunk format, expecting Buffer, got:", chunk);
     }
 
+    // 当前 buffer 余下这么多空间可用
     const remainSpace = this.tempBuf.length - this.tempBufSize;
+
+    // 我要从 chunk 拿多长的数据
+    const sizeTaken = Math.min(remainSpace, chunk.length);
+
+    // 要反压给上游什么样的数据
     const buffersReturn = [];
     if (chunk.length > remainSpace) {
-      buffersReturn.push(Buffer.from(chunk, remainSpace));
+      const retBuf = chunk.subarray(remainSpace);
+      buffersReturn.push(retBuf);
     }
-    this.tempBuf.fill(
-      chunk,
-      this.tempBufSize,
-      this.tempBufSize + Math.min(remainSpace, chunk.length)
-    );
 
-    this.tempBufSize += chunk.length;
+    // 把 chunk 写到 buffer 末尾，取 sizeTaken 这么多
+    this.tempBuf.fill(chunk, this.tempBufSize, this.tempBufSize + sizeTaken);
 
-    if (this.tempBufSize === pktSpec.totalSize) {
-      const pdu = new MeasurePDU(chunk);
-      if (pdu.valid) {
-        console.debug(`Got valid PDU: ${pdu}`);
-        this.push(pdu);
-        this.tempBufSize = 0;
-      } else {
-        this.tempBufSize -= 1;
-        this.tempBuf = Buffer.from(this.tempBuf, 1);
+    // 追加内容到 buffer 末尾之后，更新 buffer 实时大小
+    this.tempBufSize += sizeTaken;
+
+    // 若已有足够多的数据可用于解析 preamble，则将 preamble 及之后的内容平移到 buffer 开头。
+    if (this.tempBufSize >= pktSpec.magicStr.length) {
+      this.hasPreamble = false;
+      const idx = checkPattern(this.tempBuf, pktSpec.magicStr);
+      if (idx !== -1) {
+        // buffer 里面有 preamble 存在，preamble 只是用来确定封包的起始位置，
+        // 并不代表封包是完好无损的，也不代表以收集到了足够用于解析整个封包的数据。
+        // 检测到了 preamble 之后，就把 preamble 之前的全部丢掉。
+        this.tempBuf.copyWithin(0, idx, this.tempBuf.length);
+        this.tempBufSize -= idx;
+        this.hasPreamble = true;
       }
 
-      if (buffersReturn.length > 0) {
-        const returnBuf = Buffer.concat(buffersReturn);
-        if (returnBuf.length > 0) {
-          this.unshift(returnBuf);
+      // 若有 preamble，并且 buffer 当前长度足够解析一个 packet，尝试解析
+      // 无论解析成功，失败与否，都：
+      // 1. 丢弃用过了封包内容，一个封包损坏了就是损坏了。
+      // 2. 清除 hasPreamble 标志。
+      if (this.tempBufSize >= pktSpec.totalSize && this.hasPreamble) {
+        this.hasPreamble = false;
+
+        // 获取 packet 自身的内容
+        const pktBuf = Buffer.alloc(pktSpec.totalSize);
+        this.tempBuf.copy(pktBuf, 0, 0, pktSpec.totalSize);
+
+        // 更新当前 buffer 及其实时容量记录。
+        this.tempBuf.copyWithin(0, pktBuf.length, this.tempBuf.length);
+        this.tempBufSize -= pktBuf.length;
+
+        const pduObj = new MeasurePDU(pktBuf);
+        if (pduObj.valid) {
+          this.push(pduObj);
+        } else {
+          console.error(
+            "Warning, malformed packet (shouldn't happen):",
+            pktBuf
+          );
         }
+      }
+    }
+
+    if (buffersReturn.length > 0) {
+      const retBuf = Buffer.concat(buffersReturn);
+      if (retBuf.length > 0) {
+        console.debug("[debug] returning buffer:", retBuf);
+        this.unshift(retBuf);
       }
     }
 

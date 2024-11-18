@@ -449,10 +449,17 @@ switch (os.endianness()) {
 
 const socket = new Socket();
 
+const appCtx = {
+  onStop: () => {},
+};
+
 socket.connect({ host, port }, () => {
   console.debug(`Connected to ${host}:${port}`);
 
   const measurer = new LatencyMeasurer(interval, socket);
+  appCtx.onStop = () => {
+    measurer.stop();
+  };
   measurer.start();
 });
 
@@ -463,6 +470,6 @@ socket.on("error", () => {
 
 // Handle cleanup on exit
 process.on("SIGINT", () => {
-  measurer.stop();
+  appCtx.onStop();
   process.exit(0);
 });

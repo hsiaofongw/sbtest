@@ -203,37 +203,6 @@ class MeasurePDU {
   }
 }
 
-/**
- * Check if given pattern `pattern` is exsisting at buffer `buf`.
- * if it is, returns the offset (in bytes), otherwise returns `-1`.
- * @param {Buffer} buf
- * @param {Buffer} pattern
- * @returns {number}
- */
-function checkPattern(buf, pattern) {
-  if (!(buf instanceof Buffer && pattern instanceof Buffer)) {
-    throw TypeError("Expecting Buffer.");
-  }
-
-  if (buf.length < pattern.length) {
-    return -1;
-  }
-
-  if (pattern.length <= 0) {
-    throw "Invalid pattern length, this is undefined behavior.";
-  }
-
-  // Now it's comfortable to check pattern, since buf.length >= pattern.length > 0.
-  // (todo): Rewrites this using KMP algorithm.
-  for (let i = 0; i < buf.length - pattern.length + 1; ++i) {
-    if (buf.compare(pattern, 0, pattern.length, i, i + pattern.length) === 0) {
-      return i;
-    }
-  }
-
-  return -1;
-}
-
 class PacketParser extends Transform {
   constructor(opts = {}) {
     super({ ...opts, objectMode: true });
@@ -313,7 +282,7 @@ class PacketParser extends Transform {
       return false;
     }
 
-    const idx = checkPattern(this.tempBuf, pktSpec.magicStr);
+    const idx = this.tempBuf.indexOf(pktSpec.magicStr);
     this.hasPreamble = idx !== -1;
     if (this.hasPreamble) {
       // buffer 里面有 preamble 存在，preamble 只是用来确定封包的起始位置，

@@ -271,45 +271,7 @@ class PacketParser extends Transform {
     // 追加内容到 buffer 末尾之后，更新 buffer 实时大小
     this.tempBufSize += sizeTaken;
 
-    // 若已有足够多的数据可用于解析 preamble，则将 preamble 及之后的内容平移到 buffer 开头。
-    if (this.tempBufSize >= pktSpec.magicStr.length) {
-      this.hasPreamble = false;
-      const idx = checkPattern(this.tempBuf, pktSpec.magicStr);
-      if (idx !== -1) {
-        // buffer 里面有 preamble 存在，preamble 只是用来确定封包的起始位置，
-        // 并不代表封包是完好无损的，也不代表以收集到了足够用于解析整个封包的数据。
-        // 检测到了 preamble 之后，就把 preamble 之前的全部丢掉。
-        this.tempBuf.copyWithin(0, idx, this.tempBuf.length);
-        this.tempBufSize -= idx;
-        this.hasPreamble = true;
-      }
-
-      // 若有 preamble，并且 buffer 当前长度足够解析一个 packet，尝试解析
-      // 无论解析成功，失败与否，都：
-      // 1. 丢弃用过了封包内容，一个封包损坏了就是损坏了。
-      // 2. 清除 hasPreamble 标志。
-      if (this.tempBufSize >= pktSpec.totalSize && this.hasPreamble) {
-        this.hasPreamble = false;
-
-        // 获取 packet 自身的内容
-        const pktBuf = Buffer.alloc(pktSpec.totalSize);
-        this.tempBuf.copy(pktBuf, 0, 0, pktSpec.totalSize);
-
-        // 更新当前 buffer 及其实时容量记录。
-        this.tempBuf.copyWithin(0, pktBuf.length, this.tempBuf.length);
-        this.tempBufSize -= pktBuf.length;
-
-        const pduObj = new MeasurePDU(pktBuf);
-        if (pduObj.valid) {
-          this.push(pduObj);
-        } else {
-          console.error(
-            "Warning, malformed packet (shouldn't happen):",
-            pktBuf
-          );
-        }
-      }
-    }
+    this.tryYieldPacket();
 
     if (buffersReturn.length > 0) {
       const retBuf = Buffer.concat(buffersReturn);
@@ -322,14 +284,70 @@ class PacketParser extends Transform {
     callback();
   }
 
-  _flush(callback) {
-    if (this.tempBufSize === pktSpec.totalSize) {
-      const pdu = new MeasurePDU(this.tempBuf);
-      if (pdu.valid) {
-        this.push(pdu);
-      }
+  doParsePacket() {
+    if (this.tempBufSize < pktSpec.totalSize) {
+      throw `Insufficient buffer to parse as packet, expecting as least: ${pktSpec.totalSize}, got: ${this.tempBufSize}`;
     }
 
+    this.hasPreamble = false;
+
+    // 获取 packet 自身的内容
+    const pktBuf = Buffer.alloc(pktSpec.totalSize);
+    this.tempBuf.copy(pktBuf, 0, 0, pktSpec.totalSize);
+
+    // 更新当前 buffer 及其实时容量记录。
+    this.tempBuf.copyWithin(0, pktBuf.length);
+    this.tempBufSize -= pktBuf.length;
+
+    const pduObj = new MeasurePDU(pktBuf);
+    if (pduObj.valid) {
+      return pduObj;
+    } else {
+      console.error("Warning, malformed packet (shouldn't happen):", pktBuf);
+    }
+  }
+
+  // 识别到 preamble 的位置之后，会把 preamble 之前的都丢掉。
+  doIdentifyPreamble() {
+    if (this.tempBufSize < pktSpec.magicStr.length) {
+      return false;
+    }
+
+    const idx = checkPattern(this.tempBuf, pktSpec.magicStr);
+    this.hasPreamble = idx !== -1;
+    if (this.hasPreamble) {
+      // buffer 里面有 preamble 存在，preamble 只是用来确定封包的起始位置，
+      // 并不代表封包是完好无损的，也不代表以收集到了足够用于解析整个封包的数据。
+      // 检测到了 preamble 之后，就把 preamble 之前的全部丢掉。
+      this.tempBuf.copyWithin(0, idx);
+      this.tempBufSize -= idx;
+    }
+
+    return this.hasPreamble;
+  }
+
+  tryYieldPacket() {
+    // 若已有足够多的数据可用于解析 preamble，则将 preamble 及之后的内容平移到 buffer 开头。
+    if (this.tempBufSize >= pktSpec.magicStr.length) {
+      if (!this.doIdentifyPreamble()) {
+        return;
+      }
+      // 若有 preamble，并且 buffer 当前长度足够解析一个 packet，尝试解析
+      // 无论解析成功，失败与否，都：
+      // 1. 丢弃用过了封包内容，一个封包损坏了就是损坏了。
+      // 2. 清除 hasPreamble 标志。
+
+      if (this.tempBufSize >= pktSpec.totalSize) {
+        const pduObj = this.doParsePacket();
+        if (pduObj) {
+          this.push(pduObj);
+        }
+      }
+    }
+  }
+
+  _flush(callback) {
+    this.tryYieldPacket();
     callback();
   }
 }

@@ -46,20 +46,110 @@ export class KMPDFA {
     this.state = 0;
   }
 
-  public write(seq: Uint8Array): number {
-    if (!(seq instanceof Uint8Array)) {
-      throw TypeError(
-        "Expecting seq is a instance (or sub-class) of Uint8Array"
-      );
-    }
-
-    for (let i = 0; i < seq.byteLength; ++i) {
-      this.state = this.dfa[this.state][seq[i]] ?? 0;
-      if (this.state === this.pattern.length) {
-        return i + 1;
+  /**
+   * 从一个 ringBuffer 中给定偏移位置开始读取最多 nbytes 字节。
+   * @param seq 输入内容的 buffer 区域
+   * @param offset 开始读的偏移地址，基址是 seq（作为 Buffer）的起始地址
+   * @param nbytes 最大读取多少字节
+   * @returns
+   */
+  public write(seq: Uint8Array, offset: number, nbytes: number): number {
+    let didReads = 0;
+    while (didReads < nbytes) {
+      const cursor = (offset + didReads) % seq.byteLength;
+      this.state = this.dfa[this.state][seq[cursor]] ?? 0;
+      if (this.state == this.pattern.length) {
+        return didReads + 1;
       }
+      ++didReads;
     }
-
-    return seq.length;
+    return didReads;
   }
 }
+
+type TestCase = {
+  pat: Buffer;
+  txt: Buffer;
+  shouldAccept: boolean;
+  bytesTake: number;
+};
+
+const testCases: TestCase[] = [
+  {
+    pat: Buffer.from("31681"),
+    txt: Buffer.from("69317316819"),
+    shouldAccept: true,
+    bytesTake: 10,
+  },
+  {
+    pat: Buffer.from("31681"),
+    txt: Buffer.from("6931731681"),
+    shouldAccept: true,
+    bytesTake: 10,
+  },
+  {
+    pat: Buffer.from("31681"),
+    txt: Buffer.from("31681123"),
+    shouldAccept: true,
+    bytesTake: 5,
+  },
+  {
+    pat: Buffer.from("31681"),
+    txt: Buffer.from("131681123"),
+    shouldAccept: true,
+    bytesTake: 6,
+  },
+  {
+    pat: Buffer.from("31681"),
+    txt: Buffer.from("316131681123"),
+    shouldAccept: true,
+    bytesTake: 9,
+  },
+  {
+    pat: Buffer.from("31618"),
+    txt: Buffer.from("316131681123"),
+    shouldAccept: false,
+    bytesTake: String("316131681123").length,
+  },
+  {
+    pat: Buffer.from("12"),
+    txt: Buffer.from("1"),
+    shouldAccept: false,
+    bytesTake: 1,
+  },
+  {
+    pat: Buffer.from("123"),
+    txt: Buffer.from([]),
+    shouldAccept: false,
+    bytesTake: 0,
+  },
+];
+
+// export function test() {
+//   for (let cI = 0; cI < testCases.length; ++cI) {
+//     console.log("Testing case index:", cI);
+//     const testCase = testCases[cI];
+//     console.log(testCase);
+//     const { pat, txt } = testCase;
+//     const kmpDfa = new KMPDFA(pat);
+//     console.log("dfa:", kmpDfa.dfa);
+//     const bytesTaken = kmpDfa.write(txt);
+//     const isSeqAccepted = kmpDfa.isAccepted();
+//     const actual = { bytesTaken, isSeqAccepted };
+//     const passed =
+//       bytesTaken === testCase.bytesTake &&
+//       isSeqAccepted === testCase.shouldAccept;
+//     console.log("Actual:", actual);
+//     const expected = {
+//       bytesTaken: testCase.bytesTake,
+//       isSeqAccepted: testCase.shouldAccept,
+//     };
+//     console.log("Expected:", expected);
+//     console.log("Passed:", passed);
+//     if (!passed) {
+//       throw "Test Failed at idx:" + String(cI);
+//     }
+//   }
+// }
+
+// test();

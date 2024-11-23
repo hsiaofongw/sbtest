@@ -4,6 +4,7 @@ module.exports = {
   entry: "./src/entry.ts",
   devtool: "inline-source-map",
   mode: "production",
+  target: "node",
   module: {
     rules: [
       {

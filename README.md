@@ -1,22 +1,23 @@
-# TCP 分组往返延时测试工具
+# TCP Latency Tester
 
-## 最小工作示例
+## Minimum working example
 
-在服务端启动一个 echo server:
+First launch an simple echo server in the server side where you are testing latency against:
 
 ```
 ncat --keep-open --listen 12345 --exec '/usr/bin/cat'
 ```
 
-在客户端：
+An echo server only has to be as simple as be capable of simply echoing byte stream.
+
+Then in the client side where the connection is initiated from runs the client program:
 
 ```
-node ./latency-measure.js <server_host> <server_port> <tick_interval_seconds>
+node ./latency-measure.js --mode client --host <host> --port <port> --interval <millisecond>
 ```
 
-## 待办
+## Todos
 
-1. 增加 server 类型支持：`'echo'`，`'timestamp'`。默认仍然假定 server 类型为 `'echo'`；
-2. 对于 `'timestamp'` 类型的 server，增加分别打印去程和回程的延时的功能，并且用文档规范数据包格式；
-3. 增加对 SOCKS 代理的支持；
-4. 增加一个“类型”的必填命令行参数（`--type`, `-t`），取值范围：`'client'` 和 `'server'`。当 `--type` 为 `'client'` 时，行为和 demo 版本一样。当 `--type` 为 `'server'` 时，还应当通过 `--mode` 指定服务器如何响应请求，`--mode` 的取值有：`'echo'` 和 `'timestamp'`，默认 `'echo'`。
+1. Supports the `'server'` mode.
+2. Be capable of printing out single trip latency where possible.
+3. Supports proxy type like `SOCKS`.

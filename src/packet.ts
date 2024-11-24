@@ -22,7 +22,7 @@ export class PacketParser extends Transform {
   constructor(
     packetSize: number,
     magicWords: Buffer,
-    internalBufSize: number = packetSize - magicWords.byteLength,
+    internalBufSize: number = Math.max(1, packetSize) << 4,
     opts: TransformOptions = {}
   ) {
     super({ ...opts, objectMode: true });

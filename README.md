@@ -36,5 +36,9 @@ Then still use `--mode client` in client clide to connect to this endpoint as be
 
 ## Todos
 
-1. Supports proxy type like `SOCKS`.
-1. Prometheus metrics.
+1. Supports proxy type like SOCKS5, and HTTP Connect.
+2. Prometheus metrics, for monitoring, visulization, alerting and analysis.
+3. Supports `ProxyCommand` like that in ssh, so that these standard I/O based tunnel tools would then become useful to this.
+4. WebSocket supports, because what achieved via TCP might also be achieved via WebSocket. Besides, WebSocket has its own framing mechanism, so won't need to do it again (when relying on WebSocket as transport layer).
+5. Supports web target (i.e. running in browser environment). However, in that case, WebSocket might become the only available transport protocol that could use.
+6. Allow optionally adjust the total size of PDU that are gonna used to exchange with the server, like that in `ping`, one could utilize this feature to study how does the size of PDU affects the behavior of the network.

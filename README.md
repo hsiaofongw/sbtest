@@ -30,6 +30,10 @@ Doing so would instruct the program working in server mode and modify the packet
 
 Then still use `--mode client` in client clide to connect to this endpoint as before.
 
+## Screenshot
+
+![Screenshot](./doc/screenshot/1.png)
+
 ## Todos
 
 1. Supports proxy type like `SOCKS`.

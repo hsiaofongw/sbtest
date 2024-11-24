@@ -114,7 +114,7 @@ export class MeasurePDU {
 
   public static fromTimestamp(tx: number): MeasurePDU {
     const pduObj = new MeasurePDU();
-    pduObj.cliTx = BigInt(1);
+    pduObj.cliTx = BigInt(tx);
     return pduObj;
   }
 

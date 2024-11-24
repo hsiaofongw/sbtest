@@ -88,8 +88,8 @@ export class PrettyPrintFormatter extends Transform {
 
     if (chunk.sendTrip !== undefined && chunk.backTrip !== undefined) {
       infos.push(
-        `SendTrip: ${chunk.sendTrip.toFixed(0)}`,
-        `BackTrip: ${chunk.backTrip.toFixed(0)}`
+        `SendTrip: ${chunk.sendTrip.toFixed(0)}ms`,
+        `BackTrip: ${chunk.backTrip.toFixed(0)}ms`
       );
     }
 

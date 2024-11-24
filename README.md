@@ -1,6 +1,6 @@
 # TCP Latency Tester
 
-## Minimum working example
+## Basic usage
 
 First launch an simple echo server in the server side where you are testing latency against:
 
@@ -16,8 +16,21 @@ Then in the client side where the connection is initiated from, runs the client 
 node ./dist/bundle.js --mode client --host <host> --port <port> --interval <millisecond>
 ```
 
+## Print single trip latency (advanced)
+
+To make the program be capable of printing single trip latency, the server side have to be aware of the packet and be able to modify packet to tag the timestamp on it, hence the client program would be able to calculate the delta between the client timestamp and the server timestamp tagged on the packet.
+
+Instead of launch a simple echo server, launch this program in server mode and with an additional `-D` option like this:
+
+```
+node ./dist/bundle.js --mode server -D --port 14148
+```
+
+Doing so would instruct the program working in server mode and modify the packet to tag the timestamp on it.
+
+Then still use `--mode client` in client clide to connect to this endpoint as before.
+
 ## Todos
 
-1. Supports the `'server'` mode.
-2. Be capable of printing out single trip latency where possible.
-3. Supports proxy type like `SOCKS`.
+1. Supports proxy type like `SOCKS`.
+1. Prometheus metrics.

@@ -79,6 +79,7 @@ export const paramKeyMode = "--mode";
 export const paramKeyInterval = "--interval";
 export const paramKeyVersion = "--version";
 export const paramKeyDebug = "--debug";
+export const paramKeyDualTrip = "--dual-trip";
 
 export const defaultArgDefines: ArgvDescriptor[] = [
   {
@@ -120,6 +121,13 @@ export const defaultArgDefines: ArgvDescriptor[] = [
     shortKey: "-d",
     fullKey: paramKeyDebug,
     description: "Print debugging information.",
+    type: valTypeBool,
+  },
+  {
+    shortKey: "-D",
+    fullKey: paramKeyDualTrip,
+    description:
+      "Enable dual trip latency tracking, when enabled, the server would tag each packet with timestamp.",
     type: valTypeBool,
   },
   {

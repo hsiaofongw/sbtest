@@ -8,12 +8,12 @@ First launch an simple echo server in the server side where you are testing late
 ncat --keep-open --listen 12345 --exec '/usr/bin/cat'
 ```
 
-An echo server only has to be as simple as be capable of simply echoing byte stream.
+An echo server only has to be as simple as be capable of echoing bytes.
 
-Then in the client side where the connection is initiated from runs the client program:
+Then in the client side where the connection is initiated from, runs the client program:
 
 ```
-node ./latency-measure.js --mode client --host <host> --port <port> --interval <millisecond>
+node ./dist/bundle.js --mode client --host <host> --port <port> --interval <millisecond>
 ```
 
 ## Todos

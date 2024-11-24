@@ -85,7 +85,7 @@ export class PacketParser extends Transform {
     callback: TransformCallback
   ) {
     let sizeTaken = 0;
-    while (sizeTaken < chunk.byteLength) {
+    while (sizeTaken < chunk.byteLength || this.tempBufSize > 0) {
       sizeTaken += this.absorbChunkToBuffer(chunk, sizeTaken);
       if (this.hasPreamble) {
         if (this.tempBufSize >= this.sduLen) {

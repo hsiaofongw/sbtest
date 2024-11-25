@@ -20,7 +20,7 @@ export type BasicType =
   | typeof valTypeFlt;
 
 export type ArgvDescriptor = {
-  shortKey: string;
+  shortKey?: string;
   fullKey: string;
   description: string;
   type: BasicType;
@@ -80,6 +80,8 @@ export const paramKeyInterval = "--interval";
 export const paramKeyVersion = "--version";
 export const paramKeyDebug = "--debug";
 export const paramKeyDualTrip = "--dual-trip";
+export const paramKeyWS = "--websocket";
+export const paramKeyWSURI = "--websocket-uri";
 
 export const defaultArgDefines: ArgvDescriptor[] = [
   {
@@ -131,6 +133,17 @@ export const defaultArgDefines: ArgvDescriptor[] = [
     type: valTypeBool,
   },
   {
+    shortKey: "-W",
+    fullKey: paramKeyWS,
+    description: "Use WebSocket as low level transport.",
+    type: valTypeBool,
+  },
+  {
+    fullKey: paramKeyWSURI,
+    description: "WebSocket connection string, this also implies -W.",
+    type: valTypeStr,
+  },
+  {
     shortKey: "-V",
     fullKey: paramKeyVersion,
     description: "Show the revision of this build.",
@@ -139,7 +152,19 @@ export const defaultArgDefines: ArgvDescriptor[] = [
 ];
 
 export function getArgDescriptionLine(argDef: ArgvDescriptor) {
-  return [`${argDef.shortKey}, ${argDef.fullKey}`]
+  const keys: string[] = [];
+  if (argDef.shortKey) {
+    keys.push(argDef.shortKey);
+  }
+  if (argDef.fullKey) {
+    keys.push(argDef.fullKey);
+  }
+
+  if (keys.length === 0) {
+    return "";
+  }
+
+  return keys
     .concat(argDef.type === valTypeBool ? [] : [`<${argDef.type}>`])
     .concat(argDef.description)
     .join("\t");
@@ -189,7 +214,9 @@ class ExpandShortKey extends Transform {
     this.argDefs = argDefs;
     this.argDefMaps = {};
     for (const def of argDefs) {
-      this.argDefMaps[def.shortKey] = def;
+      if (def.shortKey) {
+        this.argDefMaps[def.shortKey] = def;
+      }
     }
   }
 

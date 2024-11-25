@@ -17,8 +17,12 @@ import {
 } from "./pdu";
 import { PacketParser } from "./packet";
 import { TimerStream } from "./timer";
+import { Socket } from "net";
+import { Cancellation } from "./cancellation";
+import { IApplication } from "./shared_types";
+import WebSocket, { createWebSocketStream } from "ws";
 
-export class LatencyMeasurer {
+class LatencyMeasurer {
   private rwStream: Duplex;
   private timerStream: TimerStream;
   private pduFromTx: PDUFromTx;
@@ -70,5 +74,72 @@ export class LatencyMeasurer {
 
   public stop() {
     this.timerStream.destroy();
+  }
+}
+
+export type ClientApplicationInitOptions = {
+  tcp?: {
+    host: string;
+    portNum: number;
+  };
+  pingIntervalMs: number;
+  ws?: {
+    uri: string;
+  };
+};
+
+export class ClientApplication implements IApplication {
+  constructor(public readonly opts: ClientApplicationInitOptions) {}
+
+  public start(): Cancellation {
+    const wrap: { measurer?: LatencyMeasurer } = {};
+    const { pingIntervalMs } = this.opts;
+    if (this.opts.ws) {
+      const { uri } = this.opts.ws;
+      console.log(`Connecting to ${uri}`);
+      const ws = new WebSocket(uri);
+      ws.on("error", (err) => {
+        console.error(`WebSocket: ${uri} error:`, err);
+        process.exit(1);
+      });
+      ws.on("close", () => {
+        console.log(`WebSocket: ${uri} is closed.`);
+      });
+      ws.on("open", () => {
+        console.log(`Connected to ${uri}`);
+        const duplex = createWebSocketStream(ws);
+        wrap.measurer = new LatencyMeasurer(pingIntervalMs, duplex);
+        wrap.measurer.start();
+      });
+    } else if (this.opts.tcp) {
+      const { host, portNum } = this.opts.tcp;
+      const connUri = `tcp://${host}:${portNum}`;
+      console.log(`Connecting to ${connUri}...`);
+
+      const socket = new Socket();
+
+      socket.on("error", () => {
+        console.error(
+          `Connection to remote endpoint ${connUri} is unexpectedly closed, exitting...`
+        );
+        process.exit(1);
+      });
+
+      socket.on("close", () => {
+        console.log(`TCP Socket: ${connUri} is closed.`);
+      });
+
+      socket.connect({ host, port: portNum }, () => {
+        console.debug(`Connected to ${connUri}`);
+        wrap.measurer = new LatencyMeasurer(pingIntervalMs, socket);
+        wrap.measurer.start();
+      });
+    }
+
+    return {
+      dispose: () => {
+        wrap.measurer?.stop();
+      },
+    };
   }
 }

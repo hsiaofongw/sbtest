@@ -1,4 +1,6 @@
-# TCP Latency Tester
+# sbtest: A stream-based TCP latency tester
+
+![githubactionbadgeforbranchmain](https://github.com/hsiaofongw/sbtest/actions/workflows/build.yaml/badge.svg?branch=main)
 
 ## Basic usage
 
@@ -29,6 +31,48 @@ node ./dist/bundle.js --mode server -D --port 14148
 Doing so would instruct the program working in server mode and modify the packet to tag the timestamp on it.
 
 Then still use `--mode client` in client clide to connect to this endpoint as before.
+
+## Websocket transport
+
+We are now supported WebSocket transport. WebSocket leverage HTTP message to peform handshaking thus make it convenient to reuse exisiting HTTP content delivery network, we have deployed a demo server at `wss://sbtest-demo.exploro.one` so that you may easily have a try:
+
+```
+node ./dist/app.js \
+  --mode client \
+  --websocket \
+  --websocket-uri 'wss://sbtest-demo.exploro.one'
+```
+
+If you just wanna have a on-premise server deployment, you might use our docker build script at [scripts/build-docker-image.sh](scripts/build-docker-image.sh) to build a self-contained OCI container image, and then launch it by invoking:
+
+```
+docker run \
+  -p 47851:47851 \
+  --rm -dit \
+  --name sbtest \
+  sbtest:0.4 \
+    --mode server \
+    --websocket \
+    --port 47851 \
+    -D
+```
+
+See there's nothing special but only an additional `--websocket` parameter is added.
+
+## Build from source
+
+cd into this project's directory, then invokes:
+
+```
+npm install    # do this only at first build or after the dependency list (i.e. package.json) has been updated.
+npm run build
+```
+
+If all goes well, the artifact output would be in `dist/app.js` related to current directory. You might ship this JavaScript script file to anywhere needed, without having to ship the whole `node_modules` dependencies together. Only a lts-versioned Node runtime is needed to installed for running it.
+
+Also one could use the script at [scripts/build-docker-image.sh](scripts/build-docker-image.sh) to build an OCI container image, and the entrypoint has already set to `node path/to/script.js`.
+
+For compliance and safety requirements, it's also ok to use docker to build it and docker to run it, i.e., build it in a container (or any sandboxed environment) and also run it inside a container (or any sandboxed environment). This is viable because the project only relys on Node runtime itself, and everything else from the libs had been already packed into the bundled output before it was built.
 
 ## Screenshot
 

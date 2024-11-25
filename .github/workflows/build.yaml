@@ -1,0 +1,37 @@
+name: Build
+on:
+  push:
+    tags:
+      - "*"
+    branches:
+      - "main"
+
+jobs:
+  job0:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checking out repo
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push with the latest tag
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: run
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+      - name: Build and push with the named tag
+        if: ${{ github.ref_type == 'tag' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: run
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}

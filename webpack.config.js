@@ -5,6 +5,7 @@ module.exports = {
     app: "./src/entry.ts",
     test_ws_cli: "./src/test_ws_cli.ts",
     test_ws_srv: "./src/test_ws_srv.ts",
+    test_h2_srv: "./src/test_h2_srv.ts",
   },
   devtool: "inline-source-map",
   mode: "production",

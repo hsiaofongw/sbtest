@@ -85,3 +85,5 @@ For compliance and safety requirements, it's also ok to use docker to build it a
 3. Supports `ProxyCommand` like that in ssh, so that these standard I/O based tunnel tools would then become useful to this.
 4. Supports web target (i.e. running in browser environment). However, in that case, WebSocket might become the only available transport protocol that could use.
 5. Allow optionally adjust the total size of PDU that are gonna used to exchange with the server, like that in `ping`, one could utilize this feature to study how does the size of PDU affects the behavior of the network.
+6. Supports HTTP2 transport.
+7. Replace ths use of `performance.now()` with `Date.now()`, or provide an option to set it.

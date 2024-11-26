@@ -3,7 +3,7 @@ import { KMPDFA } from "./sequence";
 import { ringBufRead, ringBufWrite } from "./ring_buf_op";
 
 export type TimedPacketBuffer = {
-  tx: number;
+  tx: bigint;
   buf: Buffer;
 };
 
@@ -73,7 +73,7 @@ export class PacketParser extends Transform {
     this.consumeRingBuf(pktBuf.byteLength);
 
     this.push({
-      tx: performance.now(),
+      tx: process.hrtime.bigint(),
       buf: pktBuf,
     } as TimedPacketBuffer);
     this.hasPreamble = false;

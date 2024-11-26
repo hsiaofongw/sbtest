@@ -71,10 +71,10 @@ offset: ${o}, length: ${l}, next offset: ${no}`;
 }
 
 export class MeasurePDU {
-  public rev: BigInt;
-  public cliTx: BigInt;
-  public srvTx: BigInt;
-  public seqNum: BigInt;
+  public rev: bigint;
+  public cliTx: bigint;
+  public srvTx: bigint;
+  public seqNum: bigint;
 
   constructor() {
     this.rev = BigInt(1);
@@ -171,15 +171,15 @@ export class PDUFromTimedBuffer extends Transform {
   ): void {
     const pduObj = MeasurePDU.fromFixedSizeBuffer(chunk.buf);
     const seqNum = pduObj.seqNum;
-    const receivedAt = chunk.tx;
-    const sentAt = this.txTracker.getVal(seqNum);
+    const receivedAt = Number(chunk.tx);
+    const sentAt = Number(this.txTracker.getVal(seqNum));
     if (sentAt === undefined || sentAt === null) {
       console.error(`Unidentified packet, seqNum=${seqNum}`);
       callback();
       return;
     }
 
-    this.txTracker.setVal(seqNum, receivedAt - sentAt);
+    this.txTracker.setVal(seqNum, BigInt(receivedAt - sentAt));
     callback(null, pduObj);
   }
 }

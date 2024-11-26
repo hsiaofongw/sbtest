@@ -1,6 +1,9 @@
 import { Transform, TransformOptions, TransformCallback } from "stream";
 import { MeasurePDU, pktSpec } from "./pdu";
 
+// 默认分配给 SendTxTracker 的每个 slot 8 字节的空间
+const defaultSlotSize = 8;
+
 /**
  * 这个类型的实例用于记录每个封包的发送时间，key 是 `seqNum`，value 获取自 `performance.now()`。
  * 使用 seqNum 对 capacity 取模作为 idx 来进行记录。
@@ -8,22 +11,28 @@ import { MeasurePDU, pktSpec } from "./pdu";
 export function makeTxTracker(capacity: number) {}
 export class SendTxTracker {
   private buf: Buffer;
+  private readonly slotSize: number;
 
-  constructor(private capacity: number = 2 ** 8 - 1) {
+  constructor(public readonly capacity: number = 2 ** 8 - 1) {
     if (this.capacity <= 0) {
       throw "Invalid capacity";
     }
-    this.buf = Buffer.alloc(capacity);
+
+    this.slotSize = defaultSlotSize;
+    this.buf = Buffer.alloc(capacity * this.slotSize);
   }
 
-  getVal(seqNum: BigInt | bigint | number) {
-    let n: number = Number(seqNum);
-    let mod = n % this.capacity;
-    return this.buf.at(mod);
+  getVal(seqNum: bigint | number): bigint {
+    return this.buf.readBigUint64BE(
+      (Number(seqNum) % this.capacity) * this.slotSize
+    );
   }
 
-  setVal(seqNum: BigInt | bigint | number, val: number): void {
-    this.buf[Number(seqNum) % this.capacity] = val;
+  setVal(seqNum: bigint | number, val: bigint): void {
+    this.buf.writeBigUInt64BE(
+      val,
+      (Number(seqNum) % this.capacity) * this.slotSize
+    );
   }
 }
 
@@ -59,7 +68,7 @@ export class LatencyCalculator extends Transform {
     }
 
     const analyzedMeasure = new LatencyAnalyzer(chunk.seqNum);
-    analyzedMeasure.roundTrip = elapsed;
+    analyzedMeasure.roundTrip = Number(elapsed);
     if (chunk.cliTx !== BigInt(0) && chunk.srvTx !== BigInt(0)) {
       analyzedMeasure.sendTrip = Number(chunk.srvTx) - Number(chunk.cliTx);
       analyzedMeasure.backTrip = Date.now() - Number(chunk.srvTx);
@@ -83,7 +92,7 @@ export class PrettyPrintFormatter extends Transform {
     let infos: string[] = [];
     infos.push(
       `SeqNum: ${chunk.seqNum}`,
-      `RoundTrip: ${Number(chunk.roundTrip).toFixed(3)}ms`
+      `RoundTrip: ${((chunk.roundTrip ?? 0) / 10 ** 6).toFixed(6)}ms`
     );
 
     if (chunk.sendTrip !== undefined && chunk.backTrip !== undefined) {
@@ -117,7 +126,7 @@ export class TxLogPass extends Transform {
     const seqNum = BigInt(
       chunk.buffer.readBigUint64BE(pktSpec.fields.seqNum.offset)
     );
-    this.tracker.setVal(seqNum, performance.now());
+    this.tracker.setVal(seqNum, process.hrtime.bigint());
     callback(null, chunk.buffer);
   }
 }

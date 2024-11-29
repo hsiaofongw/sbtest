@@ -11,7 +11,7 @@ import { Cancellation } from "./cancellation";
 
 export const exampleListenPort = 42591;
 
-class EchoApplication implements IApplication {
+class ServerApplication implements IApplication {
   private sessions: Record<
     string,
     { session: Http2Session; streams: Record<string, Http2Stream> }
@@ -123,7 +123,7 @@ class EchoApplication implements IApplication {
 }
 
 function main(port: number) {
-  const app = new EchoApplication(port);
+  const app = new ServerApplication(port);
   const cancellation = app.start();
   process.on("SIGINT", () => {
     console.log("Caught SIGINT signal, disposing app...");

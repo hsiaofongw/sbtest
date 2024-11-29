@@ -1,29 +1,81 @@
-import { pipeline } from "stream/promises";
-import WebSocket, { createWebSocketStream } from "ws";
+import { createWebSocketStream, WebSocket } from "ws";
 import { exampleListenPort } from "./test_ws_srv";
+import { IApplication } from "./shared_types";
+import { Cancellation } from "./cancellation";
+import { Duplex } from "stream";
 
-function main() {
-  const ws = new WebSocket(`ws://localhost:${exampleListenPort}/hello`);
+class ClientApplication implements IApplication {
+  private ws: WebSocket | undefined;
+  private dup: Duplex | undefined;
+  private url: string | undefined;
 
-  const duplex = createWebSocketStream(ws);
+  constructor(public readonly endpoint: string) {}
 
-  pipeline(process.stdin, duplex, process.stdout)
-    .then(() => {
-      console.log("Bye!");
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error("Pipeline error:", err);
+  start(): Cancellation {
+    const ws = new WebSocket(this.endpoint);
+    this.ws = ws;
+    ws.on("error", (err) => {
+      console.error("WebSocket error:", err);
       process.exit(1);
-    })
-    .finally(() => {
-      console.log("Exttting...");
+    });
+
+    ws.on("close", () => {
+      if (this.dup) {
+        // In case of closing is initiated by the remote peer.
+        console.log("Closing initiated by remote peer.");
+        process.stdin.unpipe(this.dup);
+        this.dup.unpipe();
+        this.dup = undefined;
+      }
+
+      this.ws = undefined;
+      console.log(`WebSocket closed: ${this.url}`);
       process.exit(0);
     });
+
+    ws.on("open", () => {
+      this.url = ws.url;
+      console.log(`Connection to ${this.url} is established.`);
+      const dup = createWebSocketStream(ws);
+      this.dup = dup;
+
+      process.stdin.pipe(dup);
+      dup.pipe(process.stdout);
+    });
+
+    return {
+      dispose: () => {
+        this.shouldDestroy();
+      },
+    };
+  }
+
+  private shouldDestroy() {
+    if (this.dup) {
+      process.stdin.unpipe();
+      this.dup.unpipe();
+      this.dup = undefined;
+    }
+
+    if (this.ws) {
+      this.ws.close();
+      this.ws = undefined;
+    }
+  }
+}
+
+function main(endpoint: string) {
+  const app = new ClientApplication(endpoint);
+  const cancellation = app.start();
+
+  process.on("SIGINT", () => {
+    console.log("Caught SIGINT signal, disposing app...");
+    cancellation.dispose();
+  });
 }
 
 if (require.main === module) {
-  main();
+  main(`ws://localhost:${exampleListenPort}/hello`);
 }
 
 /**

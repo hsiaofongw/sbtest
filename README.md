@@ -80,10 +80,10 @@ For compliance and safety requirements, it's also ok to use docker to build it a
 
 ## Todos
 
-1. Supports proxy type like SOCKS5, and HTTP Connect.
+1. Supports proxy (tunnel, not gateway) type like SOCKS5, and HTTP Connect.
 2. Prometheus metrics, for monitoring, visulization, alerting and analysis.
 3. Supports `ProxyCommand` like that in ssh, so that these standard I/O based tunnel tools would then become useful to this.
 4. Supports web target (i.e. running in browser environment). However, in that case, WebSocket might become the only available transport protocol that could use.
 5. Allow optionally adjust the total size of PDU that are gonna used to exchange with the server, like that in `ping`, one could utilize this feature to study how does the size of PDU affects the behavior of the network.
 6. Supports HTTP2 transport.
-7. Replace ths use of `performance.now()` with `Date.now()`, or provide an option to set it.
+7. the 'daemon mode', allows a client to connects to it, and initiate ping tests on behalf of clients, and clients can use query apis to query currently ongoing pings, so, a daemon of this application serve as a ping resource objects manager, and a headless client. Think of it as a docker daemon but it only in charge of ping resource objects not container resource objects.

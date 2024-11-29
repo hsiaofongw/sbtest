@@ -81,7 +81,9 @@ export const paramKeyVersion = "--version";
 export const paramKeyDebug = "--debug";
 export const paramKeyDualTrip = "--dual-trip";
 export const paramKeyWS = "--websocket";
-export const paramKeyWSURI = "--websocket-uri";
+export const paramKeyWSUri = "--websocket-uri";
+export const paramKeyHttp2 = "--http2";
+export const paramKeyHttp2Uri = "--http2-uri";
 
 export const defaultArgDefines: ArgvDescriptor[] = [
   {
@@ -139,8 +141,18 @@ export const defaultArgDefines: ArgvDescriptor[] = [
     type: valTypeBool,
   },
   {
-    fullKey: paramKeyWSURI,
+    fullKey: paramKeyWSUri,
     description: "WebSocket connection string, this also implies -W.",
+    type: valTypeStr,
+  },
+  {
+    fullKey: paramKeyHttp2,
+    description: "Use HTTP2 as low level transport.",
+    type: valTypeBool,
+  },
+  {
+    fullKey: paramKeyHttp2Uri,
+    description: "HTTP2 connection string, the HTTP2 endpoint to connect to.",
     type: valTypeStr,
   },
   {

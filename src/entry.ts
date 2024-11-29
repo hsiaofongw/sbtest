@@ -8,18 +8,26 @@ import {
   paramKeyDualTrip,
   paramKeyHelp,
   paramKeyHost,
+  paramKeyHttp2,
+  paramKeyHttp2Uri,
   paramKeyInterval,
   paramKeyMode,
   paramKeyPort,
   paramKeyVersion,
   paramKeyWS,
-  paramKeyWSURI,
+  paramKeyWSUri,
   parseArgv,
 } from "./argparse";
 import packageDescriptor from "../package.json";
 import { checkPktSpec } from "./pdu";
 import { ClientApplication, ClientApplicationInitOptions } from "./client";
-import { ServerApplication } from "./server";
+import {
+  ServerApplication,
+  TransportLayerProtocol,
+  transportHTTP2,
+  transportTCP,
+  transportWS,
+} from "./server";
 import {
   Cancellation,
   appendCancellation,
@@ -117,11 +125,19 @@ async function main() {
     console.debug("Parsed Cli Parameters:", cliParams);
   }
 
-  const wsUri = cliParams.find((p) => p.key === paramKeyWSURI)?.value as string;
-  const useWS = !!wsUri || cliParams.some((p) => p.key === paramKeyWS);
-  if (useWS) {
+  const wsUri = cliParams.find((p) => p.key === paramKeyWSUri)?.value as string;
+  const h2Uri = cliParams.find((p) => p.key === paramKeyHttp2Uri)
+    ?.value as string;
+
+  let transport: TransportLayerProtocol = transportTCP;
+  if (!!wsUri || cliParams.some((p) => p.key === paramKeyWS)) {
     console.log("Will use WebSocket as transport.");
+    transport = transportWS;
+  } else if (!!h2Uri || cliParams.some((p) => p.key === paramKeyHttp2)) {
+    console.log("Will use HTTP2 as transport.");
+    transport = transportHTTP2;
   } else {
+    console.log("Will use TCP as transport. (by default)");
   }
 
   const dual = cliParams.some((p) => p.key === paramKeyDualTrip);
@@ -154,13 +170,20 @@ async function main() {
       pingIntervalMs: intervalMs,
     };
     let endpointStr = "";
-    if (useWS) {
+    if (transport === transportWS) {
       if (!wsUri) {
-        console.error("Invalid websocket uri or it is not provided.");
+        console.error("Invalid WebSocket URI or it is not provided.");
         process.exit(1);
       }
       cliOpts.ws = { uri: wsUri };
       endpointStr = wsUri;
+    } else if (transport === transportHTTP2) {
+      if (!h2Uri) {
+        console.error("Invalid HTTP2 URI or it is not provided.");
+        process.exit(1);
+      }
+      cliOpts.h2 = { uri: h2Uri };
+      endpointStr = h2Uri;
     } else {
       const portNum = getPortNum(cliParams);
       if (portNum === undefined) {
@@ -185,7 +208,7 @@ Mode: ${mode}, IntervalMs: ${intervalMs}, Endpoint: ${endpointStr}`);
     }
     console.log(`${launchedAt}
 Mode: ${mode}, Port: ${portNum}`);
-    const srvMng = new ServerApplication(portNum, dual, useWS);
+    const srvMng = new ServerApplication(portNum, dual, transport);
     const { dispose: disposeSrv } = srvMng.start();
     appendCancellation(appCtx, disposeSrv);
   } else {

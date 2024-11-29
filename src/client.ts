@@ -86,6 +86,9 @@ export type ClientApplicationInitOptions = {
   ws?: {
     uri: string;
   };
+  h2?: {
+    uri: string;
+  };
 };
 
 export class ClientApplication implements IApplication {

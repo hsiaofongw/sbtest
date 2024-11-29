@@ -1,5 +1,6 @@
-import { AddressInfo, createServer, Server, Socket } from "net";
-import { formatAddrInfo, formatFullAddr } from "./utils";
+import { AddressInfo, createServer as createTCPServer } from "net";
+import { createServer as createH2Server, constants as h2Consts } from "http2";
+import { formatAddrInfo } from "./utils";
 import { pipeline } from "stream/promises";
 import { pktSpec } from "./pdu";
 import { StreamEdit } from "./stream_edit";
@@ -19,13 +20,22 @@ type ConnHandle = {
   xForwardedFor: string | string[];
 };
 
+export const transportTCP = "tcp";
+export const transportWS = "ws";
+export const transportHTTP2 = "h2";
+
+export type TransportLayerProtocol =
+  | typeof transportTCP
+  | typeof transportWS
+  | typeof transportHTTP2;
+
 export class ServerApplication implements IApplication {
   private conns: ConnHandle[];
 
   constructor(
     public readonly portNum: number,
     public readonly dualTrip: boolean,
-    public readonly useWS: boolean
+    public readonly transport: TransportLayerProtocol
   ) {
     if (dualTrip) {
       console.log("Dual trip timestamp patching enabled.");
@@ -85,27 +95,8 @@ export class ServerApplication implements IApplication {
   start(): Cancellation {
     const cancellation = makeCancellation();
 
-    if (this.useWS) {
-      const wss = new WebSocketServer({ port: this.portNum });
-      wss.on("listening", () => {
-        const wsSrvAddr = wss.address();
-        const wsSrvAddrStr = formatAddrInfo(wsSrvAddr);
-        console.log(`WebSocket server is listening on: ${wsSrvAddrStr}`);
-
-        wss.on("connection", (cliCkt, req) => {
-          this.onConnected(
-            createWebSocketStream(cliCkt),
-            {
-              family: req.socket.remoteFamily ?? "",
-              address: req.socket.remoteAddress ?? "",
-              port: req.socket.remotePort ?? 0,
-            },
-            req.headers["x-forwarded-for"]
-          );
-        });
-      });
-    } else {
-      const srv = createServer((cliSkt) => {
+    if (this.transport === transportTCP) {
+      const srv = createTCPServer((cliSkt) => {
         this.onConnected(cliSkt, {
           family: cliSkt.remoteFamily ?? "",
           address: cliSkt.remoteAddress ?? "",
@@ -125,6 +116,59 @@ export class ServerApplication implements IApplication {
         });
       });
       srv.listen(this.portNum);
+    } else if (this.transport === transportWS) {
+      const wss = new WebSocketServer({ port: this.portNum });
+      wss.on("listening", () => {
+        const wsSrvAddr = wss.address();
+        const wsSrvAddrStr = formatAddrInfo(wsSrvAddr);
+        console.log(`WebSocket server is listening on: ${wsSrvAddrStr}`);
+
+        wss.on("connection", (cliCkt, req) => {
+          this.onConnected(
+            createWebSocketStream(cliCkt),
+            {
+              family: req.socket.remoteFamily ?? "",
+              address: req.socket.remoteAddress ?? "",
+              port: req.socket.remotePort ?? 0,
+            },
+            req.headers["x-forwarded-for"]
+          );
+        });
+      });
+    } else if (this.transport === transportHTTP2) {
+      const h2Srv = createH2Server();
+
+      h2Srv.on("request", (req, res) => {
+        const stream = req.stream;
+        const ses = stream.session;
+        const skt = ses?.socket;
+        const addr = formatAddrInfo({
+          family: skt?.remoteFamily ?? "",
+          address: skt?.remoteAddress ?? "",
+          port: skt?.remotePort ?? 0,
+        });
+        const streamId = stream.id;
+        const path = req.headers[h2Consts.HTTP2_HEADER_PATH];
+        console.log(
+          `On request: path=${path}, streamId=${streamId}, addr=${addr}`
+        );
+
+        stream.on("close", () => {
+          stream.unpipe();
+          console.log(`Stream closed: streamId=${streamId}, addr=${addr}`);
+        });
+
+        stream.pipe(stream);
+      });
+
+      h2Srv.listen(this.portNum, () => {
+        const addr = h2Srv.address();
+        const addrStr = formatAddrInfo(addr);
+        console.log(`HTTP2 server is listening on: ${addrStr}`);
+      });
+    } else {
+      console.error("Unknown transport:", this.transport);
+      process.exit(1);
     }
 
     return cancellation;

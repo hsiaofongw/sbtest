@@ -9,7 +9,7 @@ module.exports = {
     test_h2_srv: "./src/test_h2_srv.ts",
   },
   devtool: "inline-source-map",
-  mode: "production",
+  mode: "development",
   target: "node",
   module: {
     rules: [

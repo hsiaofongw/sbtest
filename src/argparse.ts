@@ -7,6 +7,12 @@ import {
   Writable,
 } from "stream";
 import { pipeline } from "stream/promises";
+import {
+  transportHTTP2,
+  TransportLayerProtocol,
+  transportTCP,
+  transportWS,
+} from "./server/dispatch";
 
 export const valTypeStr = "string";
 export const valTypeInt = "int";
@@ -71,17 +77,18 @@ export type ValNode = FltValNode | IntValNode | BoolValNode | StrValNode;
 
 export const modeClient = "client";
 export const modeServer = "server";
+export type WorkingMode = typeof modeClient | typeof modeServer;
 
 export const paramKeyHelp = "--help";
-export const paramKeyHost = "--host";
 export const paramKeyPort = "--port";
-export const paramKeyMode = "--mode";
 export const paramKeyInterval = "--interval";
 export const paramKeyVersion = "--version";
 export const paramKeyDebug = "--debug";
 export const paramKeyDualTrip = "--dual-trip";
 export const paramKeyWS = "--websocket";
-export const paramKeyWSURI = "--websocket-uri";
+export const paramKeyHttp2 = "--http2";
+export const paramKeyConnect = "--connect";
+export const paramKeyListen = "--listen";
 
 export const defaultArgDefines: ArgvDescriptor[] = [
   {
@@ -91,31 +98,27 @@ export const defaultArgDefines: ArgvDescriptor[] = [
     type: valTypeBool,
   },
   {
-    shortKey: "-H",
-    fullKey: paramKeyHost,
-    description: "Hostname to connect to. Only allows in client mode.",
+    fullKey: paramKeyConnect,
+    description: "Endpoint's URI of which to connect to",
     type: valTypeStr,
+  },
+  {
+    fullKey: paramKeyListen,
+    description:
+      "Launch in server mode, listening port and accepting incomming connections passively.",
+    type: valTypeBool,
   },
   {
     shortKey: "-p",
     fullKey: paramKeyPort,
-    description:
-      "Port of the endpoint to connect to, or to listen when running in server mode.",
+    description: "Port to listen when running in server mode.",
     type: valTypeInt,
-  },
-  {
-    shortKey: "-m",
-    fullKey: paramKeyMode,
-    description:
-      "Mode to work on, supported values are: server, client (default).",
-    type: valTypeStr,
-    allowedValues: [modeClient, modeServer],
   },
   {
     shortKey: "-i",
     fullKey: paramKeyInterval,
     description:
-      "Interval (in miliseconds) to ping when working in client mode, 1000 by default.",
+      "Interval (in miliseconds) of pings when working in client mode, 1000 by default.",
     type: valTypeInt,
     defaultValue: 1000,
   },
@@ -133,15 +136,14 @@ export const defaultArgDefines: ArgvDescriptor[] = [
     type: valTypeBool,
   },
   {
-    shortKey: "-W",
     fullKey: paramKeyWS,
-    description: "Use WebSocket as low level transport.",
+    description: "Use WebSocket as transport layer protocol.",
     type: valTypeBool,
   },
   {
-    fullKey: paramKeyWSURI,
-    description: "WebSocket connection string, this also implies -W.",
-    type: valTypeStr,
+    fullKey: paramKeyHttp2,
+    description: "Use HTTP2 as transport layer protocol.",
+    type: valTypeBool,
   },
   {
     shortKey: "-V",
@@ -150,6 +152,59 @@ export const defaultArgDefines: ArgvDescriptor[] = [
     type: valTypeBool,
   },
 ];
+
+export function getTransport(cliParams: ValNode[]): TransportLayerProtocol {
+  for (const p of cliParams) {
+    if (p.key === paramKeyHttp2) {
+      return transportHTTP2;
+    } else if (p.key === paramKeyWS) {
+      return transportWS;
+    }
+  }
+  return transportTCP;
+}
+
+export function getWorkingMode(cliParams: ValNode[]): WorkingMode {
+  return cliParams.some((p) => p.key === paramKeyListen)
+    ? modeServer
+    : modeClient;
+}
+
+export function getListenPort(cliParams: ValNode[]): number | undefined {
+  const portParam = cliParams.find((param) => param.key === paramKeyPort);
+  const portNum: number = portParam?.value as any;
+  if (!portParam || typeof portNum !== "number") {
+    return undefined;
+  }
+
+  if (portNum < 0 || portNum > 2 ** 16) {
+    return undefined;
+  }
+
+  return portNum;
+}
+
+export function getEnableServerTimestamp(cliParams: ValNode[]): boolean {
+  return cliParams.some((p) => p.key === paramKeyDualTrip);
+}
+
+export function getConnectionURI(cliParams: ValNode[]): string {
+  return String(cliParams.find((p) => p.key === paramKeyConnect)?.value ?? "");
+}
+
+export function getPingInterval(cliParams: ValNode[]): number | undefined {
+  const p = cliParams.find((param) => param.key === paramKeyInterval);
+  const num: number = p?.value as any;
+  if (!num || typeof num !== "number") {
+    return undefined;
+  }
+
+  if (num < 0 || !Number.isFinite(num)) {
+    return undefined;
+  }
+
+  return num;
+}
 
 export function getArgDescriptionLine(argDef: ArgvDescriptor) {
   const keys: string[] = [];

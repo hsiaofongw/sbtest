@@ -1,71 +1,84 @@
 import {
-  ValNode,
   defaultArgDefines,
   getArgDescriptionLine,
+  getConnectionURI,
+  getEnableServerTimestamp,
+  getListenPort,
+  getPingInterval,
+  getTransport,
+  getWorkingMode,
   modeClient,
   modeServer,
   paramKeyDebug,
-  paramKeyDualTrip,
   paramKeyHelp,
-  paramKeyHost,
-  paramKeyInterval,
-  paramKeyMode,
-  paramKeyPort,
   paramKeyVersion,
-  paramKeyWS,
-  paramKeyWSURI,
   parseArgv,
 } from "./argparse";
 import packageDescriptor from "../package.json";
 import { checkPktSpec } from "./pdu";
-import { ClientApplication, ClientApplicationInitOptions } from "./client";
-import { ServerApplication } from "./server";
-import {
-  Cancellation,
-  appendCancellation,
-  makeCancellation,
-} from "./cancellation";
-
-function getPortNum(cliParams: ValNode[]): number | undefined {
-  const portParam = cliParams.find((param) => param.key === paramKeyPort);
-  const portNum: number = portParam?.value as any;
-  if (!portParam || typeof portNum !== "number") {
-    return undefined;
-  }
-
-  if (portNum < 0 || portNum > 2 ** 16) {
-    return undefined;
-  }
-
-  return portNum;
-}
-
-function getHostParam(cliParams: ValNode[]): string {
-  const hostParam = cliParams.find((param) => param.key === paramKeyHost);
-  return String(hostParam?.value ?? "");
-}
-
-function getIntervalMs(cliParams: ValNode[]): number | undefined {
-  const intervalMs: number =
-    (cliParams.find((p) => p.key === paramKeyInterval)?.value as any) ??
-    (defaultArgDefines.find((argDef) => argDef.fullKey === paramKeyInterval)
-      ?.defaultValue as any);
-
-  if (intervalMs < 1 || !Number.isFinite(intervalMs)) {
-    return undefined;
-  }
-
-  return intervalMs;
-}
+import { ClientApplication } from "./client/dispatch";
+import { ServerApplication } from "./server/dispatch";
+import { Cancellation } from "./cancellation";
 
 function printVersion() {
   console.log(packageDescriptor?.version ?? "Unknown");
 }
 
+type ExampleCommand = {
+  description: string;
+  command: string;
+};
+
+function getExampleCommandLines(cmd: ExampleCommand): string[] {
+  return [cmd.description, cmd.command];
+}
+
+const exampleCmds: ExampleCommand[] = [
+  {
+    description: "Print help:",
+    command: "node script.js --help",
+  },
+  {
+    description:
+      "Connects to a TCP endpoint which provides echo service, ping the endpoint every 1000 milliseconds:",
+    command: "node script.js --connect tcp://localhost:13428 --interval 1000",
+  },
+  {
+    description:
+      "Connects to a WebSocket endpoint which provides echo service, ping the endpoint every 1000 milliseconds:",
+    command: "node script.js --connect ws://127.0.0.1:31428 ---interval 1000",
+  },
+  {
+    description:
+      "Connects to a HTTP2 endpoint which provideds echo service, ping the endpoint every 1000 milliseconds:",
+    command: "node script.js --connect http://127.0.0.1:41827 --interval 1000",
+  },
+  {
+    description:
+      "Launch an echo server with TCP as its transport, listening at TCP port 12345:",
+    command: "node script.js --listen --port 12345",
+  },
+  {
+    description:
+      "Launch an echo server with WebSocket as its transport, listening at TCP port 12346:",
+    command: "node script.js --listen --port 12346 --websocket",
+  },
+  {
+    description:
+      "Launch an echo server with HTTP2 as its transport, listening at TCP port 12347:",
+    command: "node script.js --listen --port 12347 --http2",
+  },
+  {
+    description:
+      "Launch a timestamp server with HTTP2 as its transport, listening at TCP port 12348:",
+    command: "node script.js --listen --port 12348 --http2 -D",
+  },
+];
+
 function printUsage(err?: boolean) {
   const allowedUsages = [
-    "node script.js --mode client --host <host> --port <port> [options...]",
-    "node script.js --mode server --port <port> [options...]",
+    "node script.js --connect <uri> [--interval <intervalMs>]",
+    "node script.js --listen --port <portNum> [--websocket] [--http2] [-D]",
     "node script.js --help",
   ];
 
@@ -73,10 +86,24 @@ function printUsage(err?: boolean) {
     "Usage:" +
     "\n\n" +
     allowedUsages.map((x) => `${" ".repeat(4)}${x}`).join("\n") +
+    "\n\n\n" +
+    "Parameters:" +
     "\n\n" +
     defaultArgDefines
       .map((argDef) => " ".repeat(4) + getArgDescriptionLine(argDef))
-      .join("\n");
+      .join("\n") +
+    "\n\n\n" +
+    "Examples:" +
+    "\n\n" +
+    exampleCmds
+      .map((example, i) =>
+        getExampleCommandLines(example)
+          .map((l, j) => (j === 0 ? `Example ${i + 1}:  ${l}` : l))
+          .map((l) => " ".repeat(4) + l)
+          .map((l, i) => (i === 0 ? "\n" + l : l))
+          .join("\n\n")
+      )
+      .join("\n\n");
 
   if (err) {
     console.error(usageTxt);
@@ -84,6 +111,10 @@ function printUsage(err?: boolean) {
     console.log(usageTxt);
   }
 }
+
+type AppCtx = {
+  cancellation?: Cancellation;
+};
 
 async function main() {
   checkPktSpec();
@@ -104,95 +135,70 @@ async function main() {
     process.exit(0);
   }
 
-  const modeParam = cliParams.find((param) => param.key === paramKeyMode);
-  if (!modeParam) {
-    printUsage(true);
-    process.exit(1);
-  }
-
-  const mode = String(modeParam.value);
-
   const debugBit = cliParams.find((p) => p.key === paramKeyDebug);
   if (debugBit) {
     console.debug("Parsed Cli Parameters:", cliParams);
   }
 
-  const wsUri = cliParams.find((p) => p.key === paramKeyWSURI)?.value as string;
-  const useWS = !!wsUri || cliParams.some((p) => p.key === paramKeyWS);
-  if (useWS) {
-    console.log("Will use WebSocket as transport.");
-  } else {
-  }
-
-  const dual = cliParams.some((p) => p.key === paramKeyDualTrip);
-  if (dual && mode === modeServer) {
-    console.log(
-      "Server would modify packets to enable the client working out single-trip delays."
-    );
-  }
-
   const now = new Date();
-  const launchedAt = `Launched at ${now.toISOString()}`;
+  console.log(`Launched at ${now.toISOString()}`);
 
-  const appCtx: Cancellation = makeCancellation();
+  const mode = getWorkingMode(cliParams);
+  console.log(`Mode: ${mode}`);
 
-  // handles Ctrl-C exit
-  process.on("SIGINT", () => {
-    console.log("Received SIGINT, gracefully exitting...");
-    appCtx.dispose();
-    process.exit(0);
-  });
+  const appCtx: AppCtx = {};
 
-  if (mode === modeClient) {
-    const intervalMs = getIntervalMs(cliParams);
-    if (!intervalMs) {
-      console.error("Invalid interval value or it is not provided.");
+  if (mode === modeServer) {
+    const transport = getTransport(cliParams);
+    console.log(`Transport: ${transport}`);
+
+    const listenPort = getListenPort(cliParams);
+    if (!listenPort) {
+      console.error("Invalid listen port");
       process.exit(1);
     }
 
-    const cliOpts: ClientApplicationInitOptions = {
-      pingIntervalMs: intervalMs,
-    };
-    let endpointStr = "";
-    if (useWS) {
-      if (!wsUri) {
-        console.error("Invalid websocket uri or it is not provided.");
-        process.exit(1);
-      }
-      cliOpts.ws = { uri: wsUri };
-      endpointStr = wsUri;
-    } else {
-      const portNum = getPortNum(cliParams);
-      if (portNum === undefined) {
-        console.error("Valid port number is required.");
-        process.exit(1);
-      }
+    console.log(`Listen port: ${listenPort}`);
 
-      const host = getHostParam(cliParams) ?? "localhost";
-      cliOpts.tcp = { host, portNum };
-      endpointStr = `tcp://${host}:${portNum}`;
-    }
-    console.log(`${launchedAt}
-Mode: ${mode}, IntervalMs: ${intervalMs}, Endpoint: ${endpointStr}`);
-    const cli = new ClientApplication(cliOpts);
-    const { dispose: disposeCli } = cli.start();
-    appendCancellation(appCtx, disposeCli);
-  } else if (mode === modeServer) {
-    const portNum = getPortNum(cliParams);
-    if (portNum === undefined) {
-      console.error("Invalid port number to use or it is not provided.");
+    const enableSrvTx = getEnableServerTimestamp(cliParams);
+    console.log(`Enable server timestampping: ${enableSrvTx}`);
+
+    const app = new ServerApplication(listenPort, enableSrvTx, transport);
+    appCtx.cancellation = app.start();
+  } else if (mode === modeClient) {
+    const connUri = getConnectionURI(cliParams);
+    if (!connUri) {
+      console.error("Invalid connection uri.");
       process.exit(1);
     }
-    console.log(`${launchedAt}
-Mode: ${mode}, Port: ${portNum}`);
-    const srvMng = new ServerApplication(portNum, dual, useWS);
-    const { dispose: disposeSrv } = srvMng.start();
-    appendCancellation(appCtx, disposeSrv);
+
+    console.log(`Endpoint: ${connUri}`);
+
+    const pingInterval = getPingInterval(cliParams);
+    if (!pingInterval) {
+      console.error("Invalid ping interval.");
+      process.exit(1);
+    }
+
+    console.log(`Ping interval: ${pingInterval}(ms)`);
+
+    const app = new ClientApplication({
+      pingIntervalMs: pingInterval,
+      uri: connUri,
+    });
+    appCtx.cancellation = app.start();
   } else {
-    console.error("Unknown mode:" + mode);
     printUsage(true);
+    console.error("\n\nUnknown working mode.\n\n");
     process.exit(1);
   }
+
+  process.on("SIGINT", () => {
+    console.log("Caught SIGINT, gracefully shutting down itself...");
+    if (appCtx) {
+      appCtx.cancellation?.dispose?.();
+    }
+  });
 }
 
 main();

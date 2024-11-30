@@ -10,54 +10,59 @@ First launch an simple echo server in the server side where you are testing late
 ncat --keep-open --listen 12345 --exec '/usr/bin/cat'
 ```
 
-An echo server only has to be as simple as be capable of echoing bytes.
+An echo server only has to be as simple as be capable of echoing bytes as is.
 
 Then in the client side where the connection is initiated from, runs the client program:
 
 ```
-node ./dist/bundle.js --mode client --host <host> --port <port> --interval <millisecond>
+node ./dist/app.js --connect tcp://localhost:12345 --interval 1000
 ```
 
-## Print single trip latency (advanced)
+This would test the round-trip TCP latency between the client and the endpoint peer specified by the `--connect` parameter.
 
-To make the program be capable of printing single trip latency, the server side have to be aware of the packet and be able to modify packet to tag the timestamp on it, hence the client program would be able to calculate the delta between the client timestamp and the server timestamp tagged on the packet.
-
-Instead of launch a simple echo server, launch this program in server mode and with an additional `-D` option like this:
+Other protocols like WebSocket, HTTP2 are also supported. Please refers to the help:
 
 ```
-node ./dist/bundle.js --mode server -D --port 14148
+node ./dist/app.js --help
 ```
 
-Doing so would instruct the program working in server mode and modify the packet to tag the timestamp on it.
+## Print single trip latency
 
-Then still use `--mode client` in client clide to connect to this endpoint as before.
+If the server tag a timestamp on the packet it receives, then the client might be able to guess out how long it takes for the packet from here to there (i.e. onward) and from there back to here (i.e. backward).
 
-## Websocket transport
-
-We are now supported WebSocket transport. WebSocket leverage HTTP message to peform handshaking thus make it convenient to reuse exisiting HTTP content delivery network, we have deployed a demo server at `wss://sbtest-demo.exploro.one` so that you may easily have a try:
+And yes we have implemented such feature to do this:
 
 ```
-node ./dist/app.js \
-  --mode client \
-  --websocket \
-  --websocket-uri 'wss://sbtest-demo.exploro.one'
+node ./dist/app.js --listen --port 12345 -D
 ```
 
-If you just wanna have a on-premise server deployment, you might use our docker build script at [scripts/build-docker-image.sh](scripts/build-docker-image.sh) to build a self-contained OCI container image, and then launch it by invoking:
+Then the clients that connects to this endpoint would have single trip latency measurements (both onward and backward latency) printed on its stdout.
+
+We already deploy a demo server ready to be testing:
 
 ```
-docker run \
-  -p 47851:47851 \
-  --rm -dit \
-  --name sbtest \
-  sbtest:0.4 \
-    --mode server \
-    --websocket \
-    --port 47851 \
-    -D
+node ./dist/app.js --connect 'wss://demo-sbtest-ws.exploro.one' --interval 1000
 ```
 
-See there's nothing special but only an additional `--websocket` parameter is added.
+## WebSocket and HTTP2
+
+WebSocket and HTTP2 are both good at traversing NAT, and can be easily forward by nowadays popular CDN services, therefore make it more adapated to today's actual situation.
+
+Also, direct TCP connectivity requires public IP reachability or a properly functioning tunnel set up. Hence, it would be pretty useful if it is able to test the round-trip delay directly on a application layer's stream.
+
+You can easily set up a WebSocket/HTTP2 echo server like the follows:
+
+```
+node dist/app.js --listen --port <port> --websocket  # for WebSocket as transport
+node dist/app.js --listen --port <port> --http2  # for HTTP2 as transport
+```
+
+And use proper connection string to connects to it:
+
+```
+node dist/app.js --connect ws://<hostname>:<port> --interval 1000  # or use 'wss:' if TLS is needed
+node dist/app.js --connect http://<hostname>:<port> --interval 1000  # or use 'https:' if TLS is needed
+```
 
 ## Build from source
 
@@ -80,10 +85,9 @@ For compliance and safety requirements, it's also ok to use docker to build it a
 
 ## Todos
 
-1. Supports proxy type like SOCKS5, and HTTP Connect.
+1. Supports proxy (tunnel, not gateway) type like SOCKS5, and HTTP Connect.
 2. Prometheus metrics, for monitoring, visulization, alerting and analysis.
 3. Supports `ProxyCommand` like that in ssh, so that these standard I/O based tunnel tools would then become useful to this.
 4. Supports web target (i.e. running in browser environment). However, in that case, WebSocket might become the only available transport protocol that could use.
 5. Allow optionally adjust the total size of PDU that are gonna used to exchange with the server, like that in `ping`, one could utilize this feature to study how does the size of PDU affects the behavior of the network.
-6. Supports HTTP2 transport.
-7. Replace ths use of `performance.now()` with `Date.now()`, or provide an option to set it.
+6. the 'daemon mode', allows a client to connects to it, and initiate ping tests on behalf of clients, and clients can use query apis to query currently ongoing pings, so, a daemon of this application serve as a ping resource objects manager, and a headless client. Think of it as a docker daemon but it only in charge of ping resource objects not container resource objects.

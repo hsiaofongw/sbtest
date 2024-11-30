@@ -33,3 +33,44 @@ export function formatAddrInfo(addr: AddressInfo | string | undefined | null) {
 
   return formatFullAddr(addr.family, addr.address, addr.port);
 }
+
+export interface IRemotePeer {
+  remoteFamily?: string;
+  remoteAddress?: string;
+  remotePort?: number;
+}
+export function formatRemoteAddress(skt?: IRemotePeer) {
+  return formatAddrInfo({
+    address: skt?.remoteAddress ?? "",
+    family: skt?.remoteFamily ?? "",
+    port: skt?.remotePort ?? 0,
+  });
+}
+
+export function getPortNum(p: any): number | undefined {
+  if (typeof p === "number") {
+    if (Number.isNaN(p) || !Number.isFinite(p)) {
+      return undefined;
+    }
+
+    if (p < 0 && p >= 65536) {
+      return undefined;
+    }
+
+    return p;
+  }
+
+  if (typeof p !== "string") {
+    return undefined;
+  }
+
+  try {
+    const x = parseInt(String(p));
+    if (typeof x === "number") {
+      return getPortNum(x);
+    }
+    return undefined;
+  } catch (_) {}
+
+  return undefined;
+}

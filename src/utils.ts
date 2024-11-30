@@ -33,3 +33,16 @@ export function formatAddrInfo(addr: AddressInfo | string | undefined | null) {
 
   return formatFullAddr(addr.family, addr.address, addr.port);
 }
+
+export interface IRemotePeer {
+  remoteFamily?: string;
+  remoteAddress?: string;
+  remotePort?: number;
+}
+export function formatRemoteAddress(skt?: IRemotePeer) {
+  return formatAddrInfo({
+    address: skt?.remoteAddress ?? "",
+    family: skt?.remoteFamily ?? "",
+    port: skt?.remotePort ?? 0,
+  });
+}

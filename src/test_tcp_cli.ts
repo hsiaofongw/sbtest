@@ -1,0 +1,91 @@
+import { Socket } from "net";
+import { Cancellation } from "./cancellation";
+import { IApplication } from "./shared_types";
+import { formatRemoteAddress } from "./utils";
+
+class ClientApplication implements IApplication {
+  private skt: Socket;
+  private peer: string;
+  private unpipe: () => void;
+
+  constructor(public readonly host: string, public readonly port: number) {
+    this.skt = new Socket({ allowHalfOpen: false });
+    this.peer = "";
+    this.unpipe = () => {};
+  }
+
+  start(): Cancellation {
+    this.skt.connect(this.port, this.host, () => {
+      this.peer = formatRemoteAddress(this.skt);
+      console.log(`Connected to peer ${this.peer}`);
+
+      process.stdin.pipe(this.skt);
+      this.skt.pipe(process.stdout);
+      console.log(`Pipes is set up for peer: ${this.peer}`);
+
+      this.unpipe = () => {
+        console.log("Uninstalling pipes...");
+        process.stdin.unpipe(this.skt);
+        this.skt.unpipe(process.stdout);
+      };
+    });
+
+    this.skt.on("error", (err) => {
+      console.error("Socket error:", err);
+      process.exit(1);
+    });
+
+    this.skt.on("close", (err) => {
+      console.log(`Socket ${this.peer} is closed, has error: ${err}`);
+      process.exit(err ? 1 : 0);
+    });
+
+    return {
+      dispose: () => {
+        this.shouldDestroy();
+      },
+    };
+  }
+
+  private shouldDestroy() {
+    if (this.skt.readyState === "opening" || this.skt.readyState === "closed") {
+      process.exit(0);
+    }
+
+    this.unpipe();
+    this.skt.end();
+  }
+}
+
+function main(host: string, port: number) {
+  const app = new ClientApplication(host, port);
+  const cancellation = app.start();
+  process.on("SIGINT", () => {
+    console.log("Caught SIGINT signal, disposing app...");
+    cancellation.dispose();
+  });
+}
+
+if (require.main === module) {
+  const host = process.argv[2];
+  const port = process.argv[3];
+
+  if (!(host && port)) {
+    console.error("Usage: node script.js <host> <port>");
+    process.exit(1);
+  }
+
+  let portNum = NaN;
+  try {
+    portNum = parseInt(port);
+    if (Number.isNaN(portNum) || portNum < 0 || portNum >= 65536) {
+      console.error(`Invalid port: ${port}`);
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+
+  main(host, portNum);
+}

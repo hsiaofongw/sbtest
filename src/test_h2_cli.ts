@@ -5,8 +5,7 @@ import {
   constants,
 } from "http2";
 import { exampleListenPort } from "./test_h2_srv";
-import { pipeline } from "stream/promises";
-import { formatAddrInfo } from "./utils";
+import { formatRemoteAddress } from "./utils";
 import { IApplication } from "./shared_types";
 import { Cancellation } from "./cancellation";
 
@@ -26,11 +25,7 @@ class ClientApplication implements IApplication {
     });
 
     cliSession.on("connect", (ses) => {
-      this.peerAddr = formatAddrInfo({
-        family: ses.socket.remoteFamily ?? "",
-        address: ses.socket.remoteAddress ?? "",
-        port: ses.socket.remotePort ?? 0,
-      });
+      this.peerAddr = formatRemoteAddress(ses.socket);
       console.log("Session is connected, peer is:", this.peerAddr);
 
       const stream = cliSession.request(

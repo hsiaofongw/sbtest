@@ -5,7 +5,7 @@ import {
   constants,
   createServer,
 } from "http2";
-import { formatAddrInfo } from "./utils";
+import { formatAddrInfo, formatRemoteAddress } from "./utils";
 import { IApplication } from "./shared_types";
 import { Cancellation } from "./cancellation";
 
@@ -28,11 +28,7 @@ class ServerApplication implements IApplication {
       const ses = stream.session;
 
       const skt = ses?.socket;
-      const addr = formatAddrInfo({
-        family: skt?.remoteFamily ?? "",
-        address: skt?.remoteAddress ?? "",
-        port: skt?.remotePort ?? 0,
-      });
+      const addr = formatRemoteAddress(skt);
 
       const streamId = stream.id;
       const path = req.headers[constants.HTTP2_HEADER_PATH];

@@ -8,6 +8,7 @@ module.exports = {
     test_h2_cli: "./src/test_h2_cli.ts",
     test_h2_srv: "./src/test_h2_srv.ts",
     test_tcp_cli: "./src/test_tcp_cli.ts",
+    test_tcp_srv: "./src/test_tcp_srv.ts",
   },
   devtool: "inline-source-map",
   mode: "development",

@@ -79,10 +79,6 @@ Also one could use the script at [scripts/build-docker-image.sh](scripts/build-d
 
 For compliance and safety requirements, it's also ok to use docker to build it and docker to run it, i.e., build it in a container (or any sandboxed environment) and also run it inside a container (or any sandboxed environment). This is viable because the project only relys on Node runtime itself, and everything else from the libs had been already packed into the bundled output before it was built.
 
-## Screenshot
-
-![Screenshot](./doc/screenshot/1.png)
-
 ## Todos
 
 1. Supports proxy (tunnel, not gateway) type like SOCKS5, and HTTP Connect.

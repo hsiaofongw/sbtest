@@ -73,7 +73,7 @@ npm install    # do this only at first build or after the dependency list (i.e. 
 npm run build
 ```
 
-If all goes well, the artifact output would be in `dist/app.js` related to current directory. You might ship this JavaScript script file to anywhere needed, without having to ship the whole `node_modules` dependencies together. Only a lts-versioned Node runtime is needed to installed for running it.
+If all goes well, the artifact output would be in `dist/app.js` related to current directory. You might ship this JavaScript script file to anywhere needed, without having to ship the whole `node_modules` dependencies together. Only a lts-versioned Node runtime is needed to be installed for running it.
 
 Also one could use the script at [scripts/build-docker-image.sh](scripts/build-docker-image.sh) to build an OCI container image, and the entrypoint has already set to `node path/to/script.js`.
 
